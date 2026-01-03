@@ -1,0 +1,105 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// This strategy has been created for illustration purposes only and should not be relied upon as a basis for buying, selling, or holding any asset or security.
+// © kirilov
+
+//@version=4
+strategy(
+     "EMA 6 vs EMA 200 Cross Strategy + Hull Exit (FIXED)",
+     overlay=true,
+     calc_on_every_tick=true,
+     currency=currency.USD
+     )
+
+// =====================
+// INPUTS
+// =====================
+
+// EMA lengths
+emaFast = input(title="Fast EMA (6)", type=input.integer, defval=6, minval=1, maxval=9999)
+emaMid  = input(title="Mid EMA (20)", type=input.integer, defval=20, minval=1, maxval=9999)
+emaSlow = input(title="Slow EMA (200)", type=input.integer, defval=200, minval=1, maxval=9999)
+
+// Trade direction
+tradeDirection = input(title="Trade Direction", options=["Long", "Short", "Both"], defval="Both")
+
+// Date range
+startDate = input(title="Start Date", type=input.time, defval=timestamp("01 Jan 1970 00:00"))
+endDate   = input(title="End Date", type=input.time, defval=timestamp("31 Dec 2170 23:59"))
+
+
+// =====================
+// EMA CALCULATIONS
+// =====================
+
+ema6   = ema(close, emaFast)
+ema20  = ema(close, emaMid)
+ema200 = ema(close, emaSlow)
+
+
+// =====================
+// HULL MA (EXIT DRIVER)
+// =====================
+
+hullLen = input(55, title="Hull Length")
+
+HMA(_src, _len) =>
+    wma(2 * wma(_src, _len / 2) - wma(_src, _len), round(sqrt(_len)))
+
+hull = HMA(close, hullLen)
+
+// Hull color logic (same as reference)
+hullBull = hull > hull[2]   // GREEN
+hullBear = hull < hull[2]   // RED
+
+
+// =====================
+// PLOTS
+// =====================
+
+plot(ema6,   color=color.navy,   linewidth=3)
+plot(ema20,  color=color.red,    linewidth=1)
+plot(ema200, color=color.orange, linewidth=3)
+
+plot(hull, title="Hull MA", color=hullBull ? color.lime : color.red, linewidth=2)
+
+
+// =====================
+// CONDITIONS
+// =====================
+
+inDateRange = (time >= startDate) and (time < endDate)
+
+longOK  = (tradeDirection == "Long") or (tradeDirection == "Both")
+shortOK = (tradeDirection == "Short") or (tradeDirection == "Both")
+
+// ENTRY CONDITIONS (UNCHANGED)
+longCondition  = crossover(ema6, ema200)
+shortCondition = crossunder(ema6, ema200)
+
+
+// =====================
+// ENTRIES
+// =====================
+
+if (longCondition and inDateRange and longOK)
+    strategy.entry("LONG", strategy.long)
+
+if (shortCondition and inDateRange and shortOK)
+    strategy.entry("SHORT", strategy.short)
+
+
+// =====================
+// ❌ EXIT CONDITIONS (PAIRED & WORKING)
+// =====================
+
+// Exit LONG when Hull turns RED
+closeLong  = hullBear and strategy.position_size > 0
+
+// Exit SHORT when Hull turns GREEN
+closeShort = hullBull and strategy.position_size < 0
+
+if closeLong
+    strategy.close("LONG")
+
+if closeShort
+    strategy.close("SHORT")
